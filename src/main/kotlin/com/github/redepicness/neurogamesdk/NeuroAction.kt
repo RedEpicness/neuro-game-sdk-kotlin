@@ -8,12 +8,12 @@ import org.slf4j.LoggerFactory
 abstract class NeuroAction<T>(
     val name: String,
     val description: String,
-    val serializer: KSerializer<T>,
+    val serializer: KSerializer<T>? = null,
 ) {
 
     protected val logger: Logger = LoggerFactory.getLogger("Action: $name")
 
-    internal val schema = serializer.descriptor.jsonSchemaProperty()
+    internal val schema = serializer?.descriptor?.jsonSchemaProperty()
 
     abstract fun validate(data: T): Boolean
 
@@ -23,7 +23,7 @@ abstract class NeuroAction<T>(
 
     internal fun deserialize(string: String): T? {
         return try {
-            Json.decodeFromString(serializer, string)
+            Json.decodeFromString(serializer!!, string)
         } catch (e: Exception) {
             logger.warn("Could not deserialize: $string", e)
             null

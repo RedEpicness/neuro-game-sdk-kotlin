@@ -121,24 +121,31 @@ class NeuroGameSDK(
     }
 
     private suspend fun processAction(actionMessage: NeuroMessage.ActionExecute): NeuroMessage {
-        val (id, name, data) = actionMessage
+        var (id, name, data) = actionMessage
         logger.info("Processing action: $name ($id)")
         @Suppress("UNCHECKED_CAST")
         val action: NeuroAction<Any> = registeredActions[name] as? NeuroAction<Any>
             ?: return NeuroMessage.actionResult(id, false, "Action '$name' not found!")
                 .also { logger.warn("Unsuccessful: Action '$name' not found!") }
-        if (data == null) {
-            logger.warn("Unsuccessful: Missing data field for action '$name'!")
-            return NeuroMessage.actionResult(id, false, "Missing data field for action '$name'!")
+        val obj: Any
+        if (action is NeuroActionWithoutResponse) {
+            obj = Unit
+            data = null
+        } else {
+            if (data == null) {
+                logger.warn("Unsuccessful: Missing data field for action '$name'!")
+                return NeuroMessage.actionResult(id, false, "Missing data field for action '$name'!")
+            }
+            obj = action.deserialize(data)
+                ?: return NeuroMessage.actionResult(id, false, "Could not deserialize data!")
+                    .also { logger.warn("Unsuccessful: Could not deserialize data!") }
+            val valid = action.validate(obj)
+            if (!valid) {
+                logger.warn("Unsuccessful: Invalid data!")
+                return NeuroMessage.actionResult(id, false, "Invalid data!")
+            }
         }
-        val obj = action.deserialize(data)
-            ?: return NeuroMessage.actionResult(id, false, "Could not deserialize data!")
-                .also { logger.warn("Unsuccessful: Could not deserialize data!") }
-        val valid = action.validate(obj)
-        if (!valid) {
-            logger.warn("Unsuccessful: Invalid data!")
-            return NeuroMessage.actionResult(id, false, "Invalid data!")
-        }
+
         scope.launch {
             action.process(obj)
         }
@@ -147,7 +154,7 @@ class NeuroGameSDK(
             unregisterActionsSuspend(forcedActions)
             forcedActions.clear()
         }
-        return NeuroMessage.actionResult(id, true, action.successMessage(data))
+        return NeuroMessage.actionResult(id, true, action.successMessage(data ?: Unit))
     }
 
 }

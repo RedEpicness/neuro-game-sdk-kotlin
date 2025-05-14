@@ -3,6 +3,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.builtins.serializer
 import com.github.redepicness.neurogamesdk.NeuroAction
+import com.github.redepicness.neurogamesdk.NeuroActionWithoutResponse
 import com.github.redepicness.neurogamesdk.NeuroGameSDK
 import kotlin.time.Duration.Companion.seconds
 
@@ -13,13 +14,24 @@ fun main() {
 
     runBlocking {
         launch {
-            delay(5.seconds)
-            sdk.forceAction("Current state!", "Please send an echo:", false, listOf(EchoAction))
-            delay(5.seconds)
-            sdk.shutdown()
+            while (true) {
+                delay(5.seconds)
+                sdk.forceAction("Current state!", "Please send an echo:", false, listOf(EchoAction, NoResponseAction))
+            }
         }
         sdk.start()
     }
+}
+
+object NoResponseAction : NeuroActionWithoutResponse("no-response", "This is the no response action") {
+    override fun successMessage(): String {
+        return "Succesfull!"
+    }
+
+    override suspend fun process() {
+        println("Processing...")
+    }
+
 }
 
 object EchoAction : NeuroAction<String>(
