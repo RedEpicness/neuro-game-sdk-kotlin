@@ -13,13 +13,17 @@ abstract class NeuroAction<T>(
 
     protected val logger: Logger = LoggerFactory.getLogger("Action: $name")
 
-    internal val schema = serializer?.descriptor?.jsonSchemaProperty()
+    internal val schema by lazy { serializer?.descriptor?.jsonSchemaProperty(limitedResponseResolver = ::limitedResponseResolver) }
 
     abstract fun validate(data: T): Boolean
 
     abstract fun successMessage(data: T): String
 
     abstract suspend fun process(data: T)
+
+    open fun limitedResponseResolver(serialName: String): List<String> {
+        return emptyList()
+    }
 
     internal fun deserialize(string: String): T? {
         return try {

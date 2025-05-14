@@ -133,7 +133,14 @@ internal sealed interface JsonSchemaProperty {
 @Target(AnnotationTarget.PROPERTY)
 annotation class JsonSchemaDescription(val description: String)
 
-internal fun SerialDescriptor.jsonSchemaProperty(description: String? = null): JsonSchemaProperty {
+internal fun SerialDescriptor.jsonSchemaProperty(
+    providedName: String? = null,
+    annotations: List<Annotation> = emptyList(),
+    limitedResponseResolver: (String) -> List<String> = { emptyList() }
+): JsonSchemaProperty {
+    val name = providedName ?: this.serialName
+    val description = annotations.description()
+    val limitedResponses = limitedResponseResolver.invoke(name)
     return when (this.kind) {
         PrimitiveKind.BOOLEAN -> JsonSchemaProperty.Boolean(description)
         PrimitiveKind.BYTE -> JsonSchemaProperty.Integer(description)
@@ -143,14 +150,20 @@ internal fun SerialDescriptor.jsonSchemaProperty(description: String? = null): J
         PrimitiveKind.INT -> JsonSchemaProperty.Integer(description)
         PrimitiveKind.LONG -> JsonSchemaProperty.Integer(description)
         PrimitiveKind.SHORT -> JsonSchemaProperty.Integer(description)
-        PrimitiveKind.STRING -> JsonSchemaProperty.Str(description)
+        PrimitiveKind.STRING -> JsonSchemaProperty.Str(description, limitedResponses.ifEmpty { null })
         SerialKind.ENUM -> JsonSchemaProperty.Str(description, elementNames.toList())
         StructureKind.LIST -> JsonSchemaProperty.Array(description, elementDescriptors.first().jsonSchemaProperty())
         StructureKind.CLASS, StructureKind.MAP, StructureKind.OBJECT -> {
             JsonSchemaProperty.Object(
                 description,
                 elementDescriptors.mapIndexedNotNull { index, _ -> if (isElementOptional(index)) null else getElementName(index) },
-                elementDescriptors.mapIndexed { index, descriptor -> getElementName(index) to descriptor.jsonSchemaProperty(getElementAnnotations(index).description()) }
+                elementDescriptors.mapIndexed { index, descriptor ->
+                    getElementName(index) to descriptor.jsonSchemaProperty(
+                        getElementName(index),
+                        getElementAnnotations(index),
+                        limitedResponseResolver
+                    )
+                }
                     .toMap()
             )
         }

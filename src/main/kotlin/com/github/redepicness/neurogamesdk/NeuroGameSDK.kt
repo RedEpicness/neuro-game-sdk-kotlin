@@ -28,6 +28,7 @@ class NeuroGameSDK(
 
     private val registeredActions = ConcurrentHashMap<String, NeuroAction<*>>()
     private val forcedActions = ConcurrentSet<String>()
+    private var forcedActionCallback: (suspend (NeuroAction<*>) -> Unit)? = null
 
     private val socketManager = SocketManager(this, webSocketConfig, httpClientConfig)
 
@@ -45,8 +46,14 @@ class NeuroGameSDK(
 
     fun unregisterActions(actions: Collection<String>) = scope.launch { unregisterActionsSuspend(actions) }
 
-    fun forceAction(state: String?, query: String, ephemeral: Boolean, actions: Collection<NeuroAction<*>>) =
-        scope.launch { forceActionSuspend(state, query, ephemeral, actions) }
+    fun forceAction(
+        state: String?,
+        query: String,
+        ephemeral: Boolean,
+        actions: Collection<NeuroAction<*>>,
+        callback: (suspend (NeuroAction<*>) -> Unit)? = null
+    ) =
+        scope.launch { forceActionSuspend(state, query, ephemeral, actions, callback) }
 
     suspend fun sendContextSuspend(message: String, silent: Boolean) {
         logger.info("Sending${if (silent) " silent " else " "}context: $message")
@@ -73,7 +80,13 @@ class NeuroGameSDK(
         }
     }
 
-    suspend fun forceActionSuspend(state: String?, query: String, ephemeral: Boolean, actions: Collection<NeuroAction<*>>) {
+    suspend fun forceActionSuspend(
+        state: String?,
+        query: String,
+        ephemeral: Boolean,
+        actions: Collection<NeuroAction<*>>,
+        callback: (suspend (NeuroAction<*>) -> Unit)? = null
+    ) {
         if (actions.isEmpty()) return
         if (forcedActions.isNotEmpty()) {
             logger.warn("Attempted to send force action while already waiting on another force action! (${forcedActions.joinToString(", ")})")
@@ -82,6 +95,7 @@ class NeuroGameSDK(
         }
         logger.info("Sending forced action: '$query': ${actions.joinToString(", ") { it.name }}")
         forcedActions.addAll(actions.map { it.name })
+        forcedActionCallback = callback
         registerActionsSuspend(actions)
         socketManager.send(NeuroMessage.forceActions(state, query, ephemeral, actions.map { it.name }))
     }
@@ -153,8 +167,10 @@ class NeuroGameSDK(
             logger.info("Resolved forced action: $name")
             unregisterActionsSuspend(forcedActions)
             forcedActions.clear()
+            forcedActionCallback?.invoke(action)
+            forcedActionCallback = null
         }
-        return NeuroMessage.actionResult(id, true, action.successMessage(data ?: Unit))
+        return NeuroMessage.actionResult(id, true, action.successMessage(obj))
     }
 
 }
